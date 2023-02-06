@@ -2,58 +2,88 @@ const Question = require('../models/question');
 const Option = require('../models/option');
 
 //home controller
-module.exports.home = function(req,res){
-    Question.find().exec(function (err, questions) {
-        return res.end(JSON.stringify(questions));
+module.exports.home = function (req, res) {
+    Question.find({}).populate('options').exec(function (err, questions) {
+        return res.status(200).json(questions);
     });
 }
 
 //view a question by id
-module.exports.view = function(req,res){
+module.exports.view = async function (req, res) {
+
     const id = req.params.id;
-    const question = Question.findOne({id: id});
-    res.status(200);
-    return res.end(JSON.stringify(question));
+    const question = await Question.findById(id).populate('options').exec(function (err, question) {
+        if (err) {
+            console.log('error: ', err);
+        }
+        return res.status(200).json(question);
+    })
 }
 
 //create a question
-module.exports.createQuestion = function(req,res){
-    const question = Question.create({
-        id:Question.countDocuments()+1,
-        title: req.body.title
+module.exports.createQuestion = function (req, res) {
+    Question.create({
+        title: req.body.title,
+        options: []
+    }, function (err, question) {
+        if (err) {
+            console.log('error in creating question: ', err);
+        }
+        return res.status(200).json("question created");
     })
-    res.status(200);
-    return res.end(JSON.stringify(question));
 }
 
-module.exports.createOption = function(req,res){
-    const id = req.params.id;
-    //find the question by id
-    const question = Question.findOne({id:id});
-    //if question is found 
-    if(question){
-        const option = Option.create({
-            id: question.options.length+1,
-            title: req.body.title,
-            question: question._id,
-            votes:0
-        })
-        question.options.push(option);
-        return res.status(200).send('Option created');
+
+//add option
+module.exports.createOption = async function (req, res) {
+
+    try {
+
+        const id = req.params.id;
+        //find the question by id
+        let question = await Question.findById(id);
+        //if question is found 
+        if (question) {
+            const option = await Option.create({
+                title: req.body.title,
+                question: id,
+                votes: 0,
+                link_to_vote:""
+            });
+            option.link_to_vote = "http://localhost:8000/options/"+option._id+"/add_vote";
+            await option.save();
+            question.options.push(option);
+            await question.save();
+            return res.status(200).send('Option created');
+        }
+        //else
+        else {
+            return res.status(404).send('Question not found');
+        }
+
     }
-    //else
-    else{
-        return res.status(404).send('Question not found');
+    catch (e) {
+        console.log('Error: ', e);
     }
+
 }
+
 
 //delete a question
-module.exports.delete = function (req,res) {
+module.exports.delete = async function (req, res) {
 
-    const id = req.params.id;
-    Question.findOneAndDelete({id:id}).exec(function(err){
-        return res.status(404).send('Question not found');
-    })
-    return res.status(200).send('Question successfully deleted');
-
+    try{
+        const id = req.params.id;
+        const question = await Question.findById(id).populate('options');
+        for(let option of question.options){
+            if(option.votes>=1){
+                return res.status(405).json('Deletion Not allowed as one of the options have non zero vote count!');
+            }
+        }
+        await question.remove();
+        return res.status(200).json('Question removed!');
+    }
+    catch(e){
+        console.log('Error: ',e);
+    } 
 }
