@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-mongoose.connect("mongodb://localhost/polling_api_db");
+mongoose.connect(process.env.MONGO_URI);
 
 const db = mongoose.connection;
 
